@@ -7,10 +7,13 @@ let filterText = "";
 const tabListEl = document.getElementById("tabList");
 const tabCountLabel = document.getElementById("tabCountLabel");
 const searchInput = document.getElementById("searchInput");
+const domainFilter = document.getElementById("domainFilter");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const formatSelect = document.getElementById("formatSelect");
 const copyBtn = document.getElementById("copyBtn");
 const copyBtnText = document.getElementById("copyBtnText");
+const saveListBtn = document.getElementById("saveListBtn");
+const shortcutsLink = document.getElementById("shortcutsLink");
 const toast = document.getElementById("toast");
 
 const urlInput = document.getElementById("urlInput");
@@ -18,10 +21,13 @@ const urlCountLabel = document.getElementById("urlCountLabel");
 const pasteBtn = document.getElementById("pasteBtn");
 const openBtn = document.getElementById("openBtn");
 
+const savedListEl = document.getElementById("savedList");
+
 const segButtons = document.querySelectorAll(".seg-btn");
 const panels = {
   copy: document.getElementById("panel-copy"),
   open: document.getElementById("panel-open"),
+  saved: document.getElementById("panel-saved"),
 };
 
 // ---------------- Panel switching ----------------
@@ -33,6 +39,7 @@ segButtons.forEach((btn) => {
     Object.entries(panels).forEach(([key, el]) => {
       el.classList.toggle("hidden", key !== target);
     });
+    if (target === "saved") renderSavedLists();
   });
 });
 
@@ -50,7 +57,40 @@ async function loadTabs() {
     }));
 
   selectedIds = new Set(allTabs.map((t) => t.id)); // select all by default
+  populateDomainFilter();
   renderTabList();
+}
+
+function getDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch (e) {
+    return "";
+  }
+}
+
+function populateDomainFilter() {
+  const counts = new Map();
+  for (const t of allTabs) {
+    const d = getDomain(t.url);
+    if (!d) continue;
+    counts.set(d, (counts.get(d) || 0) + 1);
+  }
+
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const previousValue = domainFilter.value;
+
+  domainFilter.innerHTML = `<option value="">All domains</option>`;
+  for (const [domain, count] of sorted) {
+    const opt = document.createElement("option");
+    opt.value = domain;
+    opt.textContent = `${domain} (${count})`;
+    domainFilter.appendChild(opt);
+  }
+
+  if ([...domainFilter.options].some((o) => o.value === previousValue)) {
+    domainFilter.value = previousValue;
+  }
 }
 
 function faviconFallbackSvg() {
@@ -63,18 +103,13 @@ function faviconFallbackSvg() {
 }
 
 function renderTabList() {
-  const query = filterText.trim().toLowerCase();
-  const filtered = allTabs.filter(
-    (t) =>
-      !query ||
-      t.title.toLowerCase().includes(query) ||
-      t.url.toLowerCase().includes(query)
-  );
+  const filtered = getFilteredTabs();
 
   tabListEl.innerHTML = "";
 
   if (!filtered.length) {
-    tabListEl.innerHTML = `<div class="empty-state">No tabs match "${escapeHtml(filterText)}"</div>`;
+    const label = filterText.trim() || domainFilter.value || "your filters";
+    tabListEl.innerHTML = `<div class="empty-state">No tabs match ${escapeHtml(label === filterText.trim() ? `"${label}"` : label)}</div>`;
     updateFooter();
     return;
   }
@@ -164,12 +199,13 @@ function updateFooter() {
 
 function getFilteredTabs() {
   const query = filterText.trim().toLowerCase();
-  return allTabs.filter(
-    (t) =>
-      !query ||
-      t.title.toLowerCase().includes(query) ||
-      t.url.toLowerCase().includes(query)
-  );
+  const domain = domainFilter.value;
+  return allTabs.filter((t) => {
+    const matchesQuery =
+      !query || t.title.toLowerCase().includes(query) || t.url.toLowerCase().includes(query);
+    const matchesDomain = !domain || getDomain(t.url) === domain;
+    return matchesQuery && matchesDomain;
+  });
 }
 
 // ---------------- Search ----------------
@@ -177,6 +213,8 @@ searchInput.addEventListener("input", () => {
   filterText = searchInput.value;
   renderTabList();
 });
+
+domainFilter.addEventListener("change", renderTabList);
 
 // ---------------- Select all / none ----------------
 selectAllBtn.addEventListener("click", () => {
@@ -220,6 +258,15 @@ copyBtn.addEventListener("click", () => {
   writeClipboard(text);
   showToast(`Copied ${selected.length} link${selected.length === 1 ? "" : "s"}`);
 });
+
+formatSelect.addEventListener("change", () => {
+  chrome.storage.local.set({ lastFormat: formatSelect.value });
+});
+
+(async () => {
+  const { lastFormat } = await chrome.storage.local.get("lastFormat");
+  if (lastFormat) formatSelect.value = lastFormat;
+})();
 
 async function writeClipboard(text) {
   try {
@@ -299,6 +346,173 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ---------------- Init ----------------
+// ---------------- Saved lists (synced across devices) ----------------
+const SYNC_ITEM_LIMIT_BYTES = 7800; // stay under chrome.storage.sync's 8KB per-item cap
+
+function byteSize(obj) {
+  return new Blob([JSON.stringify(obj)]).size;
+}
+
+async function getSavedListIndex() {
+  const { savedListIndex = [] } = await chrome.storage.sync.get("savedListIndex");
+  return savedListIndex;
+}
+
+async function saveCurrentSelectionAsList() {
+  const selected = allTabs.filter((t) => selectedIds.has(t.id));
+  if (!selected.length) {
+    showToast("Select at least one tab first");
+    return;
+  }
+
+  const name = prompt("Name this list:", `Tabs · ${new Date().toLocaleDateString()}`);
+  if (!name) return;
+
+  const entry = {
+    id: `list_${Date.now()}`,
+    name,
+    createdAt: new Date().toISOString(),
+    tabs: selected.map((t) => ({ title: t.title, url: t.url })),
+  };
+
+  const fitsSync = byteSize(entry) <= SYNC_ITEM_LIMIT_BYTES;
+  const storageArea = fitsSync ? chrome.storage.sync : chrome.storage.local;
+  entry.synced = fitsSync;
+
+  try {
+    await storageArea.set({ [entry.id]: entry });
+
+    // keep an index (in sync storage when possible) so we know what to list/load
+    const index = await getSavedListIndex();
+    index.unshift({ id: entry.id, name: entry.name, synced: fitsSync, count: entry.tabs.length, createdAt: entry.createdAt });
+    await chrome.storage.sync.set({ savedListIndex: index });
+
+    showToast(fitsSync ? `Saved "${name}" · synced` : `Saved "${name}" · this device only (too large to sync)`);
+  } catch (e) {
+    showToast("Couldn't save list — try selecting fewer tabs");
+  }
+}
+
+async function renderSavedLists() {
+  const index = await getSavedListIndex();
+
+  if (!index.length) {
+    savedListEl.innerHTML = `<div class="empty-state">No saved lists yet.<br>Select tabs in "Copy tabs" and hit "Save as list".</div>`;
+    return;
+  }
+
+  savedListEl.innerHTML = "";
+  for (const meta of index) {
+    const row = document.createElement("div");
+    row.className = "saved-row";
+    row.innerHTML = `
+      <div class="saved-row-top">
+        <div>
+          <div class="saved-row-name">${escapeHtml(meta.name)}</div>
+          <div class="saved-row-meta">${meta.count} link${meta.count === 1 ? "" : "s"} · ${new Date(meta.createdAt).toLocaleDateString()}</div>
+        </div>
+        <span class="sync-badge ${meta.synced ? "synced" : "local"}">${meta.synced ? "Synced" : "This device"}</span>
+      </div>
+      <div class="saved-row-actions">
+        <button data-action="load">Open in tabs</button>
+        <button data-action="copy">Copy links</button>
+        <button data-action="delete" class="delete-btn">Delete</button>
+      </div>
+    `;
+
+    row.querySelector('[data-action="load"]').addEventListener("click", () => loadSavedListToOpenPanel(meta.id));
+    row.querySelector('[data-action="copy"]').addEventListener("click", () => copySavedList(meta.id));
+    row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteSavedList(meta.id, meta.synced));
+
+    savedListEl.appendChild(row);
+  }
+}
+
+async function getSavedListEntry(id, synced) {
+  const area = synced ? chrome.storage.sync : chrome.storage.local;
+  const result = await area.get(id);
+  return result[id];
+}
+
+async function loadSavedListToOpenPanel(id) {
+  const index = await getSavedListIndex();
+  const meta = index.find((m) => m.id === id);
+  if (!meta) return;
+  const entry = await getSavedListEntry(id, meta.synced);
+  if (!entry) return;
+
+  urlInput.value = entry.tabs.map((t) => t.url).join("\n");
+  updateUrlCount();
+
+  segButtons.forEach((b) => b.classList.toggle("active", b.dataset.panel === "open"));
+  Object.entries(panels).forEach(([key, el]) => el.classList.toggle("hidden", key !== "open"));
+  showToast(`Loaded "${entry.name}" into Open URLs`);
+}
+
+async function copySavedList(id) {
+  const index = await getSavedListIndex();
+  const meta = index.find((m) => m.id === id);
+  if (!meta) return;
+  const entry = await getSavedListEntry(id, meta.synced);
+  if (!entry) return;
+
+  writeClipboard(entry.tabs.map((t) => t.url).join("\n"));
+  showToast(`Copied "${entry.name}"`);
+}
+
+async function deleteSavedList(id, synced) {
+  const area = synced ? chrome.storage.sync : chrome.storage.local;
+  await area.remove(id);
+
+  const index = await getSavedListIndex();
+  await chrome.storage.sync.set({ savedListIndex: index.filter((m) => m.id !== id) });
+
+  renderSavedLists();
+  showToast("List deleted");
+}
+
+saveListBtn.addEventListener("click", saveCurrentSelectionAsList);
+
+// ---------------- Keyboard shortcuts settings link ----------------
+shortcutsLink.addEventListener("click", () => {
+  chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
+});
+
+// ---------------- In-popup keyboard shortcuts ----------------
+document.addEventListener("keydown", (e) => {
+  const tag = document.activeElement.tagName;
+  const isTyping = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+  // "/" focuses the search box (unless already typing somewhere)
+  if (e.key === "/" && !isTyping) {
+    e.preventDefault();
+    searchInput.focus();
+    return;
+  }
+
+  // Escape clears search focus / blurs
+  if (e.key === "Escape" && document.activeElement === searchInput) {
+    searchInput.value = "";
+    filterText = "";
+    renderTabList();
+    searchInput.blur();
+    return;
+  }
+
+  // Ctrl/Cmd+Enter copies the current selection, from anywhere in Copy panel
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !panels.copy.classList.contains("hidden")) {
+    e.preventDefault();
+    copyBtn.click();
+    return;
+  }
+
+  // Ctrl/Cmd+A selects all visible tabs when not focused in a text field
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !isTyping && !panels.copy.classList.contains("hidden")) {
+    e.preventDefault();
+    selectAllBtn.click();
+  }
+});
+
+
 loadTabs();
 updateUrlCount();

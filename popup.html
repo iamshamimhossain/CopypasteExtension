@@ -18,6 +18,7 @@
       <nav class="segmented" role="tablist">
         <button class="seg-btn active" data-panel="copy" role="tab">Copy tabs</button>
         <button class="seg-btn" data-panel="open" role="tab">Open URLs</button>
+        <button class="seg-btn" data-panel="saved" role="tab">Saved</button>
       </nav>
     </header>
 
@@ -25,8 +26,11 @@
     <section class="panel" id="panel-copy">
       <div class="toolbar">
         <div class="search-wrap">
-          <input type="text" id="searchInput" placeholder="Filter tabs by title or URL…" />
+          <input type="text" id="searchInput" placeholder="Filter tabs by title or URL… (press /)" />
         </div>
+        <select id="domainFilter" title="Filter by domain">
+          <option value="">All domains</option>
+        </select>
         <button id="selectAllBtn" class="ghost-btn">Select all</button>
       </div>
 
@@ -45,9 +49,13 @@
             <option value="json">JSON array</option>
           </select>
         </div>
-        <button id="copyBtn" class="primary-btn">
-          <span id="copyBtnText">Copy 0 links</span>
-        </button>
+        <div class="footer-actions">
+          <button id="saveListBtn" class="ghost-btn">Save as list</button>
+          <button id="copyBtn" class="primary-btn">
+            <span id="copyBtnText">Copy 0 links</span>
+          </button>
+        </div>
+        <button id="shortcutsLink" class="shortcuts-link">⌨ Ctrl+Shift+Y copies all tabs instantly — customize shortcuts</button>
       </footer>
     </section>
 
@@ -61,6 +69,14 @@
           <button id="pasteBtn" class="ghost-btn">Paste from clipboard</button>
           <button id="openBtn" class="primary-btn">Open all tabs</button>
         </div>
+      </div>
+    </section>
+
+    <!-- ================= SAVED LISTS PANEL ================= -->
+    <section class="panel hidden" id="panel-saved">
+      <p class="hint">Saved lists sync across your devices when you're signed into Chrome (large lists fall back to this device only).</p>
+      <div class="saved-list" id="savedList">
+        <!-- populated by popup.js -->
       </div>
     </section>
 

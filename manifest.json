@@ -3,7 +3,20 @@
   "name": "Tab Link Copier",
   "version": "1.0.0",
   "description": "Copy the URLs of all your open tabs to the clipboard in one click, and reopen a list of URLs as tabs.",
-  "permissions": ["tabs", "clipboardWrite"],
+  "permissions": ["tabs", "clipboardWrite", "storage", "offscreen", "notifications"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "copy-all-tabs": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "description": "Copy links of all open tabs"
+    },
+    "copy-current-tab": {
+      "suggested_key": { "default": "Ctrl+Shift+U", "mac": "Command+Shift+U" },
+      "description": "Copy link of the current tab"
+    }
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Tab Link Copier",
