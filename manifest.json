@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Link Copier",
+  "version": "1.0.0",
+  "description": "Copy the URLs of all your open tabs to the clipboard in one click, and reopen a list of URLs as tabs.",
+  "permissions": ["tabs", "clipboardWrite"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Tab Link Copier",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

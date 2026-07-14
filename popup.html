@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Tab Link Copier</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">🔗</div>
+        <div>
+          <h1>Tab Link Copier</h1>
+          <p class="subtitle" id="tabCountLabel">Loading tabs…</p>
+        </div>
+      </div>
+      <nav class="segmented" role="tablist">
+        <button class="seg-btn active" data-panel="copy" role="tab">Copy tabs</button>
+        <button class="seg-btn" data-panel="open" role="tab">Open URLs</button>
+      </nav>
+    </header>
+
+    <!-- ================= COPY PANEL ================= -->
+    <section class="panel" id="panel-copy">
+      <div class="toolbar">
+        <div class="search-wrap">
+          <input type="text" id="searchInput" placeholder="Filter tabs by title or URL…" />
+        </div>
+        <button id="selectAllBtn" class="ghost-btn">Select all</button>
+      </div>
+
+      <div class="tab-list" id="tabList">
+        <!-- populated by popup.js -->
+      </div>
+
+      <footer class="panel-footer">
+        <div class="format-row">
+          <label for="formatSelect">Format</label>
+          <select id="formatSelect">
+            <option value="plain">Plain URLs (one per line)</option>
+            <option value="titled">Title + URL</option>
+            <option value="markdown">Markdown links</option>
+            <option value="html">HTML links</option>
+            <option value="json">JSON array</option>
+          </select>
+        </div>
+        <button id="copyBtn" class="primary-btn">
+          <span id="copyBtnText">Copy 0 links</span>
+        </button>
+      </footer>
+    </section>
+
+    <!-- ================= OPEN PANEL ================= -->
+    <section class="panel hidden" id="panel-open">
+      <p class="hint">Paste one URL per line. Missing "https://" will be added automatically.</p>
+      <textarea id="urlInput" placeholder="https://example.com/page-one&#10;https://example.com/page-two"></textarea>
+      <div class="open-footer">
+        <span id="urlCountLabel" class="muted">0 URLs</span>
+        <div class="open-actions">
+          <button id="pasteBtn" class="ghost-btn">Paste from clipboard</button>
+          <button id="openBtn" class="primary-btn">Open all tabs</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="toast" id="toast"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
